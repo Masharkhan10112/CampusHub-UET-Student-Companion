@@ -14,6 +14,15 @@ const FRIENDLY_BY_CODE: Record<string, string> = {
   user_already_exists: 'An account with this email already exists.',
   over_email_send_rate_limit: 'Too many emails requested. Please wait a minute and try again.',
   weak_password: 'Please choose a stronger password (at least 8 characters).',
+  unexpected_failure: 'The server could not complete that request. Please try again in a moment.',
+}
+
+const SERVER_ERROR = 'The server could not complete that request. Please try again in a moment.'
+
+function isUninformative(message: string | undefined) {
+  if (!message) return true
+  const trimmed = message.trim()
+  return trimmed === '' || trimmed === '{}' || trimmed === '[object Object]'
 }
 
 type MaybeSupabaseError = {
@@ -37,13 +46,18 @@ export function getErrorMessage(
     if (error.message === 'Failed to fetch') {
       return 'Cannot reach the server. Check your internet connection and try again.'
     }
-    return error.message || fallback
+    const status = (error as Error & MaybeSupabaseError).status
+    if (status && status >= 500) return SERVER_ERROR
+    if (isUninformative(error.message)) return fallback
+    return error.message
   }
 
   if (typeof error === 'object') {
     const candidate = error as MaybeSupabaseError
     if (candidate.code && FRIENDLY_BY_CODE[candidate.code]) return FRIENDLY_BY_CODE[candidate.code]
-    return candidate.message ?? candidate.error_description ?? fallback
+    if (candidate.status && candidate.status >= 500) return SERVER_ERROR
+    const message = candidate.message ?? candidate.error_description
+    return isUninformative(message) ? fallback : (message as string)
   }
 
   return fallback
